@@ -7,11 +7,7 @@ h1 {
 }
 
 canvas {
-    background-color: beige;
-    width: 45%;
-    height: 50%;
-    min-width: 600px;
-    min-height: 400px;
+    background-color: black;
     position: absolute;
     top: 25%;
     right: 5%;
