@@ -1,12 +1,309 @@
 /* global requestAnimationFrame */
 
-const canvas = document.querySelector('#canvas')
-const ctx = canvas.getContext('2d')
+const canvasFlame = document.querySelector('#canvasFlame')
+const canvasFluid = document.querySelector('#canvasFluid')
+const canvasHeart = document.querySelector('#canvasHeart')
+const ctxFlame = canvasFlame.getContext('2d')
+const ctxFluid = canvasFluid.getContext('2d')
+const ctxHeart = canvasHeart.getContext('2d')
+let renderFlame = false
+let renderFluid = false
+let renderHeart = true
+let showCoolingMap = false
+// ctxFlame.fillStyle = 'red'
+// ctxFlame.fillRect(0, 0, canvasFlame.width, canvasFlame.height)
+// ctxFluid.fillStyle = 'blue'
+// ctxFluid.fillRect(0, 0, canvasFluid.width, canvasFluid.height)
+// ctxHeart.clearRect(0, 0, canvasHeart.width, canvasHeart.height)
+
+function perlinNoise () {}
+
+function flowfieldEffect () {
+  const heart = []
+  let a = 0
+
+  function setup () {
+    ctxHeart.translate(canvasHeart.width / 2, canvasHeart.height / 2)
+    document.querySelector('#renderHeart').addEventListener('click', toggleRenderHeart)
+  }
+
+  function toggleRenderHeart () {
+    renderHeart = !renderHeart
+  }
+
+  function drawHeart () {
+    ctxHeart.strokeStyle = 'white'
+    ctxHeart.fillStyle = 'hsl(0 100 50)' // rgb(200, 100, 50)'
+    ctxHeart.beginPath()
+    for (const v of heart) {
+      const r = canvasHeart.height / 36
+      ctxHeart.lineTo(r * v.x, r * v.y)
+      ctxHeart.stroke()
+      ctxHeart.fill()
+    }
+
+    const x = 16 * Math.pow(Math.sin(a), 3)
+    const y = -1 * (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a))
+    heart.push({ x, y })
+    a += 0.01
+  }
+
+  function render () {
+    if (renderHeart) {
+      drawHeart()
+    } else {
+      ctxHeart.clearRect(-canvasHeart.width / 2, -canvasHeart.height / 2, canvasHeart.width, canvasHeart.height)
+    }
+    requestAnimationFrame(render)
+  }
+
+  function main () {
+    setup()
+    if (renderHeart) render()
+  }
+
+  main()
+}
+
+function fluidEffect () {
+  const N = 64
+  const iter = 16
+  const SCALE = 6
+
+  let fluid
+
+  class Fluid {
+    constructor (dt, diffusion, viscosity) {
+      this.size = N
+      this.dt = dt
+      this.diff = diffusion
+      this.visc = viscosity
+
+      this.s = new Array(N * N).fill(0)
+      this.density = new Array(N * N).fill(0)
+
+      this.Vx = new Array(N * N).fill(0)
+      this.Vy = new Array(N * N).fill(0)
+
+      this.Vx0 = new Array(N * N).fill(0)
+      this.Vy0 = new Array(N * N).fill(0)
+    }
+
+    // step method
+    step () {
+      const visc = this.visc
+      const diff = this.diff
+      const dt = this.dt
+      const Vx = this.Vx
+      const Vy = this.Vy
+      const Vx0 = this.Vx0
+      const Vy0 = this.Vy0
+      const s = this.s
+      const density = this.density
+
+      diffuse(1, Vx0, Vx, visc, dt)
+      diffuse(2, Vy0, Vy, visc, dt)
+      project(Vx0, Vy0, Vx, Vy)
+      advect(1, Vx, Vx0, Vx0, Vy0, dt)
+      advect(2, Vy, Vy0, Vx0, Vy0, dt)
+      project(Vx, Vy, Vx0, Vy0)
+      diffuse(0, s, density, diff, dt)
+      advect(0, density, s, Vx, Vy, dt)
+
+      // for (let i = 0; i < N * N; i++) {
+      //   this.density[i] *= 0.7 // Decay density (adjust decay factor)
+      // }
+    }
+
+    // method to add density
+    addDensity (x, y, amount) {
+      const index = ix(x, y)
+      this.density[index] += amount // Math.min(Math.max(this.density[index] + amount, 0), 255)
+    }
+
+    // method to add velocity
+    addVelocity (x, y, amountX, amountY) {
+      const index = ix(x, y)
+      this.Vx[index] += amountX
+      this.Vy[index] += amountY
+    }
+
+    // function to render density
+    renderD () {
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+          const x = i * SCALE
+          const y = j * SCALE
+          const d = this.density[ix(i, j)]
+          const fill = (d + 50) % 255
+          ctxFluid.fillStyle = `hsl(${fill}, 200, 50)`
+          ctxFluid.fillRect(x, y, SCALE, SCALE)
+        }
+      }
+    }
+  }
+
+  function ix (x, y) {
+    if (x < 0 || x >= N - 1 || y < 0 || y >= N - 1) {
+      return 0
+    }
+    return (x + y * N)
+  }
+
+  function setBnd (b, x) {
+    for (let i = 1; i < N - 1; i++) {
+      x[ix(i, 0)] = b === 2 ? -x[ix(i, 1)] : x[ix(i, 1)]
+      x[ix(i, N - 1)] = b === 2 ? -x[ix(i, N - 2)] : x[ix(i, N - 2)]
+    }
+
+    for (let j = 1; j < N - 1; j++) {
+      x[ix(0, j)] = b === 1 ? -x[ix(1, j)] : x[ix(1, j)]
+      x[ix(N - 1, j)] = b === 1 ? -x[ix(N - 2, j)] : x[ix(N - 2, j)]
+    }
+
+    x[ix(0, 0)] = 0.5 * (x[ix(1, 0)] + x[ix(0, 1)])
+    x[ix(0, N - 1)] = 0.5 * (x[ix(1, N - 1)] + x[ix(0, N - 2)])
+    x[ix(N - 1, 0)] = 0.5 * (x[ix(N - 2, 0)] + x[ix(N - 1, 1)])
+    x[ix(N - 1, N - 1)] = 0.5 * (x[ix(N - 2, N - 1)] + x[ix(N - 1, N - 2)])
+  }
+
+  function linSolve (b, x, x0, a, c) {
+    const cRecip = 1.0 / c
+    for (let k = 0; k < iter; k++) {
+      for (let j = 1; j < N - 1; j++) {
+        for (let i = 1; i < N - 1; i++) {
+          x[ix(i, j)] =
+            (x0[ix(i, j)] +
+            a * (
+              x[ix(i + 1, j)] +
+              x[ix(i - 1, j)] +
+              x[ix(i, j + 1)] +
+              x[ix(i, j - 1)]
+            )) * cRecip
+        }
+      }
+      setBnd(b, x)
+    }
+  }
+
+  function diffuse (b, x, prevX, diff, dt) {
+    const a = dt * diff * (N - 2) * (N - 2)
+    linSolve(b, x, prevX, a, 1 + 6 * a)
+  }
+
+  function project (velocX, velocY, p, div) {
+    for (let j = 1; j < N - 1; j++) {
+      for (let i = 1; i < N - 1; i++) {
+        div[ix(i, j)] = (-0.5 * (
+          velocX[ix(i + 1, j)] -
+          velocX[ix(i - 1, j)] +
+          velocY[ix(i, j + 1)] -
+          velocY[ix(i, j - 1)]
+        )) / N
+        p[ix(i, j)] = 0
+      }
+    }
+    setBnd(0, div)
+    setBnd(0, p)
+    linSolve(0, p, div, 1, 6)
+
+    for (let j = 1; j < N - 1; j++) {
+      for (let i = 1; i < N - 1; i++) {
+        velocX[ix(i, j)] -= 0.5 * (p[ix(i + 1, j)] - p[ix(i - 1, j)]) * N
+        velocY[ix(i, j)] -= 0.5 * (p[ix(i, j + 1)] - p[ix(i, j - 1)]) * N
+      }
+    }
+
+    setBnd(1, velocX)
+    setBnd(2, velocY)
+  }
+
+  function advect (b, d, d0, velocX, velocY, dt) {
+    let i0, i1, j0, j1
+
+    const dtx = dt * (N - 2)
+    const dty = dt * (N - 2)
+
+    let s0, s1, t0, t1
+    let tmp1, tmp2, x, y
+
+    const Nfloat = N - 2
+    let ifloat, jfloat
+    let i, j
+
+    for (j = 1, jfloat = 1; j < N - 1; j++, jfloat++) {
+      for (i = 1, ifloat = 1; i < N - 1; i++, ifloat++) {
+        tmp1 = dtx * velocX[ix(i, j)]
+        tmp2 = dty * velocY[ix(i, j)]
+        x = ifloat - tmp1
+        y = jfloat - tmp2
+
+        if (x < 0.5) x = 0.5
+        if (x > Nfloat + 0.5) x = Nfloat + 0.5
+        i0 = Math.floor(x)
+        i1 = i0 + 1.0
+        if (y < 0.5) y = 0.5
+        if (y > Nfloat + 0.5) y = Nfloat + 0.5
+        j0 = Math.floor(y)
+        j1 = j0 + 1.0
+
+        s1 = x - i0
+        s0 = 1.0 - s1
+        t1 = y - j0
+        t0 = 1.0 - t1
+
+        const i0i = parseInt(i0)
+        const i1i = parseInt(i1)
+        const j0i = parseInt(j0)
+        const j1i = parseInt(j1)
+
+        d[ix(i, j)] =
+          s0 * (t0 * d0[ix(i0i, j0i)]) +
+            (t1 * d0[ix(i0i, j1i)]) +
+          s1 * (t0 * d0[ix(i1i, j0i)]) +
+            (t1 * d0[ix(i1i, j1i)])
+      }
+    }
+    setBnd(b, d)
+  }
+
+  function setup () {
+    fluid = new Fluid(0.1, 0.01, 0.000000001)
+    document.querySelector('#renderFluid').addEventListener('click', toggleRenderFluid)
+  }
+
+  function toggleRenderFluid () {
+    renderFluid = !renderFluid
+  }
+
+  function render () {
+    const cx = Math.floor(0.5 * canvasFluid.width / SCALE)
+    const cy = Math.floor(0.2 * canvasFluid.height / SCALE)
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        fluid.addDensity(cx + i, cy + j, Math.random() * 50 + 150)
+      }
+    }
+    // fluid.addVelocity(cx, cy, Math.random() - 0.5, Math.random() - 0.5)
+    // fluid.step()
+    fluid.renderD()
+    requestAnimationFrame(render)
+  }
+
+  function main () {
+    setup()
+    if (renderFluid) render()
+  }
+
+  main()
+}
 
 // Flame Effect als umfassende Funktion, um alles zusammen zu halten
 function flameEffect () {
-  canvas.height = 600
-  canvas.width = 400 // bei mehr als 400 macht die Julia Menge Probleme
+  canvasFlame.height = 600
+  canvasFlame.width = 400 // bei mehr als 400 macht die Julia Menge Probleme
+  const width = canvasFlame.width
+  const height = canvasFlame.height
   const pixelsize = 2 // beeinflusst die Anzeige und die Rechenleistung
   const coolingEffect = 0.7 // beeinflusst, wie hoch die Flammen schlagen. Bei 0 ist so gut wie alles weiss
   const coolingCircles = 400 // beeinflusst die Häufigkeit, mit der die Flammen abkühlen.
@@ -21,36 +318,6 @@ function flameEffect () {
   const juliaCImaginary = -0.2321 // der imaginäre Anteil für die komplexe Zahl der Julia Menge
   let yStart = 0
   let feuer, buffer, buffer2, coolingMap
-
-  const N = 256
-
-  const FluidCube = {
-    size: N,
-    dt: 0.0,
-    diff: 0.0,
-    visc: 0.0,
-    s: [],
-    density: [],
-    Vx: [],
-    Vy: [],
-    Vx0: [],
-    Vy0: [],
-
-    createFluidCube: (dt, diffusion, viscosity) => {
-      const fluidCube = Object.create(FluidCube)
-      fluidCube.size = N
-      fluidCube.dt = dt
-      fluidCube.diff = diffusion
-      fluidCube.visc = viscosity
-      fluidCube.s = Array(N * N)
-      fluidCube.density = Array(N * N)
-      fluidCube.Vx = Array(N * N)
-      fluidCube.Vy = Array(N * N)
-      fluidCube.Vx0 = Array(N * N)
-      fluidCube.Vy0 = Array(N * N)
-      return fluidCube
-    }
-  }
 
   // Prototyp für ein Image
   const protoImage = {
@@ -74,7 +341,7 @@ function flameEffect () {
       return ref
     },
     drawImage: function () {
-      ctx.putImageData(this.data, this.x, this.y)
+      ctxFlame.putImageData(this.data, this.x, this.y)
     },
     setPixelColor: function (x, y, color) {
       this.pixels[y][x] = color
@@ -122,28 +389,38 @@ function flameEffect () {
 
   // Erstellt die Anfangsbedingungen
   function setup () {
-    feuer = create2DArray(canvas.width, canvas.height)
-    buffer = create2DArray(canvas.width, canvas.height)
-    coolingMap = create2DArray(canvas.width * 2, canvas.height * 2)
+    feuer = create2DArray(width, height)
+    buffer = create2DArray(width, height)
+    coolingMap = protoImage.createImage(0, 0, width, height)
     buffer2 = protoImage.createImage(0, 0, coolingMap.width, coolingMap.height)
+    document.querySelector('#renderFlame').addEventListener('click', toggleRenderFlame)
+    document.querySelector('#showCoolingMap').addEventListener('click', toggleShowCoolingMap)
     createCoolingMap()
+  }
+
+  function toggleRenderFlame () {
+    renderFlame = !renderFlame
+  }
+
+  function toggleShowCoolingMap () {
+    showCoolingMap = !showCoolingMap
   }
 
   // Erstellt zufällig graue Kreise auf der Zeichenfläche
   function randomNoise () {
     for (let i = 0; i < coolingCircles; i++) {
       const rndmBrightness = Math.floor(Math.random() * 255)
-      const randomX = Math.floor(Math.random() * (canvas.width - 20)) + 10
-      const randomY = Math.floor(Math.random() * (canvas.height - 20)) + 10
+      const randomX = Math.floor(Math.random() * (width - 20)) + 10
+      const randomY = Math.floor(Math.random() * (height - 20)) + 10
       const randomRadius = Math.floor(Math.random() * coolingRadius) + pixelsize
-      ctx.beginPath()
-      ctx.arc(randomX, randomY, randomRadius, 0, 2 * Math.PI, false)
-      ctx.fillStyle = `rgb(${rndmBrightness}, ${rndmBrightness}, ${rndmBrightness})`
-      ctx.fill()
-      ctx.closePath()
+      ctxFlame.beginPath()
+      ctxFlame.arc(randomX, randomY, randomRadius, 0, 2 * Math.PI, false)
+      ctxFlame.fillStyle = `rgb(${rndmBrightness}, ${rndmBrightness}, ${rndmBrightness})`
+      ctxFlame.fill()
+      ctxFlame.closePath()
     }
     const ref = Object.create(protoImage)
-    ref.fromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height))
+    ref.fromImageData(ctxFlame.getImageData(0, 0, width, height))
     return ref
   }
 
@@ -354,8 +631,8 @@ function flameEffect () {
     for (let x = 0; x < array.length; x++) {
       for (let y = 0; y < array[x].length; y++) {
         const pixel = array[x][y]
-        ctx.fillStyle = `rgba(${pixel.r},${pixel.g},${pixel.b},${pixel.a})`
-        ctx.fillRect(x * pixelsize, y * pixelsize, pixelsize, pixelsize)
+        ctxFlame.fillStyle = `rgba(${pixel.r},${pixel.g},${pixel.b},${pixel.a})`
+        ctxFlame.fillRect(x * pixelsize, y * pixelsize, pixelsize, pixelsize)
       }
     }
   }
@@ -364,8 +641,9 @@ function flameEffect () {
   function render () {
     smoothe2D(feuer)
     feuer = cool(feuer, coolingMap)
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    draw2dArray(feuer)
+    ctxFlame.clearRect(0, 0, width, height)
+    if (renderFlame) draw2dArray(feuer)
+    if (showCoolingMap) coolingMap.drawImage()
     requestAnimationFrame(render)
   }
 
@@ -378,3 +656,6 @@ function flameEffect () {
 }
 
 flameEffect()
+fluidEffect()
+perlinNoise()
+flowfieldEffect()
