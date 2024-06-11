@@ -10,11 +10,6 @@ let renderFlame = false
 let renderFluid = false
 let renderHeart = true
 let showCoolingMap = false
-// ctxFlame.fillStyle = 'red'
-// ctxFlame.fillRect(0, 0, canvasFlame.width, canvasFlame.height)
-// ctxFluid.fillStyle = 'blue'
-// ctxFluid.fillRect(0, 0, canvasFluid.width, canvasFluid.height)
-// ctxHeart.clearRect(0, 0, canvasHeart.width, canvasHeart.height)
 
 function perlinNoise () {}
 
