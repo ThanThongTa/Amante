@@ -3,30 +3,130 @@
 const canvasFlame = document.querySelector('#canvasFlame')
 const canvasFluid = document.querySelector('#canvasFluid')
 const canvasHeart = document.querySelector('#canvasHeart')
+const canvasNoise = document.querySelector('#canvasNoise')
 const ctxFlame = canvasFlame.getContext('2d')
 const ctxFluid = canvasFluid.getContext('2d')
 const ctxHeart = canvasHeart.getContext('2d')
+const ctxNoise = canvasNoise.getContext('2d')
 let renderFlame = false
 let renderFluid = false
-let renderHeart = true
+let renderHeart = false
+let renderNoise = true
 let showCoolingMap = false
 
-function perlinNoise () {}
+function perlinNoise() {
+  const persistence = 0.5
+  const octaves = 4
+  const amplitude = 1
+  const frequency = 10
+  const gradients = []
 
-function flowfieldEffect () {
+  function createGradientsTable() {
+    for (let i = 0; i < 256; i++) {
+      gradients[i] = []
+      for (let j = 0; j < 256; j++) {
+        gradients[i][j] = []
+        for (let k = 0; k < 256; k++) {
+          const a = Math.random() * 2 * Math.PI
+          const b = Math.random() * 2 * Math.PI
+          const c = Math.random() * 2 * Math.PI
+          gradients[i][j].push({
+            x: Math.cos(a),
+            y: Math.cos(b),
+            z: Math.cos(c)
+          })
+        }
+      }
+    }
+  }
+
+  function interpolate() { }
+
+  function noiseForOctave(x, y, z, octave) {
+    if (octave <= 0) { return 0 }
+    let n = 0
+    let amp = amplitude * Math.pow(persistence, octaves - octave)
+    let freq = frequency * Math.pow(persistence, octaves - octave)
+
+    let gradX = Math.floor(x / freq)
+    let gradY = Math.floor(y / freq)
+    let gradZ = Math.floor(z / freq)
+
+    let grad = gradients[gradX][gradY][gradZ]
+
+    let fracX = x - (gradX * freq)
+    let calcX = (fracX / freq) * 2 * Math.PI
+    let valX = grad.x * amp
+    let sinX = Math.sin(calcX)
+    let combX = valX * sinX
+
+    let fracY = y - (gradY * freq)
+    let calcY = (fracY / freq) * 2 * Math.PI
+    let valY = grad.y * amp
+    let sinY = Math.sin(calcY)
+    let combY = valY * sinY
+
+    let fracZ = z - (gradZ * freq)
+    let calcZ = (fracZ / freq) * 2 * Math.PI
+    let valZ = grad.z * amp
+    let sinZ = Math.sin(calcZ)
+    let combZ = valZ * sinZ
+
+    n += (combX + combY + combZ) / 3 + noiseForOctave(x, y, z, octave - 1)
+    return n
+  }
+
+  function noise1d(x) {
+    return noiseForOctave(x, 21, 21, octaves)
+  }
+
+  function noise2d(x, y) {
+    return noiseForOctave(x, y, 21, octaves)
+  }
+
+  function noise3d(x, y, z) {
+    return noiseForOctave(x, y, z, octaves)
+  }
+
+  function setup() {
+    canvasNoise.width = 400
+    canvasNoise.height = 400
+    ctxNoise.fillStyle = 'rgb(51, 51, 51)'
+    ctxNoise.fillRect(0, 0, canvasNoise.width, canvasNoise.height)
+    createGradientsTable()
+
+    ctxNoise.beginPath();
+    ctxNoise.fillStyle = 'white'
+    ctxNoise.arc(200, 200, 24, 0, 2 * Math.PI);
+    ctxNoise.fill();
+  }
+  function render() {
+    requestAnimationFrame(render)
+  }
+  function main() {
+    if (renderNoise) {
+      setup()
+      render()
+    }
+
+  }
+  main()
+}
+
+function flowfieldEffect() {
   const heart = []
   let a = 0
 
-  function setup () {
+  function setup() {
     ctxHeart.translate(canvasHeart.width / 2, canvasHeart.height / 2)
     document.querySelector('#renderHeart').addEventListener('click', toggleRenderHeart)
   }
 
-  function toggleRenderHeart () {
+  function toggleRenderHeart() {
     renderHeart = !renderHeart
   }
 
-  function drawHeart () {
+  function drawHeart() {
     ctxHeart.strokeStyle = 'white'
     ctxHeart.fillStyle = 'hsl(0 100 50)' // rgb(200, 100, 50)'
     ctxHeart.beginPath()
@@ -43,7 +143,7 @@ function flowfieldEffect () {
     a += 0.01
   }
 
-  function render () {
+  function render() {
     if (renderHeart) {
       drawHeart()
     } else {
@@ -52,15 +152,17 @@ function flowfieldEffect () {
     requestAnimationFrame(render)
   }
 
-  function main () {
-    setup()
-    if (renderHeart) render()
+  function main() {
+    if (renderHeart) {
+      setup()
+      render()
+    }
   }
 
   main()
 }
 
-function fluidEffect () {
+function fluidEffect() {
   const N = 64
   const iter = 16
   const SCALE = 6
@@ -68,7 +170,7 @@ function fluidEffect () {
   let fluid
 
   class Fluid {
-    constructor (dt, diffusion, viscosity) {
+    constructor(dt, diffusion, viscosity) {
       this.size = N
       this.dt = dt
       this.diff = diffusion
@@ -85,7 +187,7 @@ function fluidEffect () {
     }
 
     // step method
-    step () {
+    step() {
       const visc = this.visc
       const diff = this.diff
       const dt = this.dt
@@ -111,20 +213,20 @@ function fluidEffect () {
     }
 
     // method to add density
-    addDensity (x, y, amount) {
+    addDensity(x, y, amount) {
       const index = ix(x, y)
       this.density[index] += amount // Math.min(Math.max(this.density[index] + amount, 0), 255)
     }
 
     // method to add velocity
-    addVelocity (x, y, amountX, amountY) {
+    addVelocity(x, y, amountX, amountY) {
       const index = ix(x, y)
       this.Vx[index] += amountX
       this.Vy[index] += amountY
     }
 
     // function to render density
-    renderD () {
+    renderD() {
       for (let i = 0; i < N; i++) {
         for (let j = 0; j < N; j++) {
           const x = i * SCALE
@@ -138,14 +240,14 @@ function fluidEffect () {
     }
   }
 
-  function ix (x, y) {
+  function ix(x, y) {
     if (x < 0 || x >= N - 1 || y < 0 || y >= N - 1) {
       return 0
     }
     return (x + y * N)
   }
 
-  function setBnd (b, x) {
+  function setBnd(b, x) {
     for (let i = 1; i < N - 1; i++) {
       x[ix(i, 0)] = b === 2 ? -x[ix(i, 1)] : x[ix(i, 1)]
       x[ix(i, N - 1)] = b === 2 ? -x[ix(i, N - 2)] : x[ix(i, N - 2)]
@@ -162,31 +264,31 @@ function fluidEffect () {
     x[ix(N - 1, N - 1)] = 0.5 * (x[ix(N - 2, N - 1)] + x[ix(N - 1, N - 2)])
   }
 
-  function linSolve (b, x, x0, a, c) {
+  function linSolve(b, x, x0, a, c) {
     const cRecip = 1.0 / c
     for (let k = 0; k < iter; k++) {
       for (let j = 1; j < N - 1; j++) {
         for (let i = 1; i < N - 1; i++) {
           x[ix(i, j)] =
             (x0[ix(i, j)] +
-            a * (
-              x[ix(i + 1, j)] +
-              x[ix(i - 1, j)] +
-              x[ix(i, j + 1)] +
-              x[ix(i, j - 1)]
-            )) * cRecip
+              a * (
+                x[ix(i + 1, j)] +
+                x[ix(i - 1, j)] +
+                x[ix(i, j + 1)] +
+                x[ix(i, j - 1)]
+              )) * cRecip
         }
       }
       setBnd(b, x)
     }
   }
 
-  function diffuse (b, x, prevX, diff, dt) {
+  function diffuse(b, x, prevX, diff, dt) {
     const a = dt * diff * (N - 2) * (N - 2)
     linSolve(b, x, prevX, a, 1 + 6 * a)
   }
 
-  function project (velocX, velocY, p, div) {
+  function project(velocX, velocY, p, div) {
     for (let j = 1; j < N - 1; j++) {
       for (let i = 1; i < N - 1; i++) {
         div[ix(i, j)] = (-0.5 * (
@@ -213,7 +315,7 @@ function fluidEffect () {
     setBnd(2, velocY)
   }
 
-  function advect (b, d, d0, velocX, velocY, dt) {
+  function advect(b, d, d0, velocX, velocY, dt) {
     let i0, i1, j0, j1
 
     const dtx = dt * (N - 2)
@@ -254,47 +356,51 @@ function fluidEffect () {
 
         d[ix(i, j)] =
           s0 * (t0 * d0[ix(i0i, j0i)]) +
-            (t1 * d0[ix(i0i, j1i)]) +
+          (t1 * d0[ix(i0i, j1i)]) +
           s1 * (t0 * d0[ix(i1i, j0i)]) +
-            (t1 * d0[ix(i1i, j1i)])
+          (t1 * d0[ix(i1i, j1i)])
       }
     }
     setBnd(b, d)
   }
 
-  function setup () {
+  function setup() {
     fluid = new Fluid(0.1, 0.01, 0.000000001)
     document.querySelector('#renderFluid').addEventListener('click', toggleRenderFluid)
   }
 
-  function toggleRenderFluid () {
+  function toggleRenderFluid() {
     renderFluid = !renderFluid
   }
 
-  function render () {
-    const cx = Math.floor(0.5 * canvasFluid.width / SCALE)
-    const cy = Math.floor(0.2 * canvasFluid.height / SCALE)
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        fluid.addDensity(cx + i, cy + j, Math.random() * 50 + 150)
+  function render() {
+    if (renderFluid) {
+      const cx = Math.floor(0.5 * canvasFluid.width / SCALE)
+      const cy = Math.floor(0.2 * canvasFluid.height / SCALE)
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          fluid.addDensity(cx + i, cy + j, Math.random() * 50 + 150)
+        }
       }
+      // fluid.addVelocity(cx, cy, Math.random() - 0.5, Math.random() - 0.5)
+      // fluid.step()
+      fluid.renderD()
     }
-    // fluid.addVelocity(cx, cy, Math.random() - 0.5, Math.random() - 0.5)
-    // fluid.step()
-    fluid.renderD()
     requestAnimationFrame(render)
   }
 
-  function main () {
-    setup()
-    if (renderFluid) render()
+  function main() {
+    if (renderFluid) {
+      setup()
+      render()
+    }
   }
 
   main()
 }
 
 // Flame Effect als umfassende Funktion, um alles zusammen zu halten
-function flameEffect () {
+function flameEffect() {
   canvasFlame.height = 600
   canvasFlame.width = 400 // bei mehr als 400 macht die Julia Menge Probleme
   const width = canvasFlame.width
@@ -373,7 +479,7 @@ function flameEffect () {
   }
 
   // erstellt ein 2D Array gefüllt mit weissen Pixeln
-  function create2DArray (width, height) {
+  function create2DArray(width, height) {
     const array = [
       ...Array(Math.floor(width / pixelsize))
     ].fill().map(() =>
@@ -383,7 +489,7 @@ function flameEffect () {
   }
 
   // Erstellt die Anfangsbedingungen
-  function setup () {
+  function setup() {
     feuer = create2DArray(width, height)
     buffer = create2DArray(width, height)
     coolingMap = protoImage.createImage(0, 0, width, height)
@@ -393,16 +499,16 @@ function flameEffect () {
     createCoolingMap()
   }
 
-  function toggleRenderFlame () {
+  function toggleRenderFlame() {
     renderFlame = !renderFlame
   }
 
-  function toggleShowCoolingMap () {
+  function toggleShowCoolingMap() {
     showCoolingMap = !showCoolingMap
   }
 
   // Erstellt zufällig graue Kreise auf der Zeichenfläche
-  function randomNoise () {
+  function randomNoise() {
     for (let i = 0; i < coolingCircles; i++) {
       const rndmBrightness = Math.floor(Math.random() * 255)
       const randomX = Math.floor(Math.random() * (width - 20)) + 10
@@ -420,7 +526,7 @@ function flameEffect () {
   }
 
   // Erstellt eine Cooling Map für das Abkühlen der Flammen
-  function createCoolingMap () {
+  function createCoolingMap() {
     coolingMap = randomNoise()
     for (let i = 0; i < coolingSmoothings; i++) {
       smoothe(coolingMap)
@@ -428,7 +534,7 @@ function flameEffect () {
   }
 
   // Macht ein Bild unscharf, indem es alle Farben eines Punktes auf den Durchschnitt seiner Nachbarn setzt
-  function smoothe (image) {
+  function smoothe(image) {
     buffer2 = image
     buffer2.loadPixels()
     for (let x = 0; x < image.width; x++) {
@@ -462,12 +568,12 @@ function flameEffect () {
   }
 
   // Transponiert ein 2D Array, so dass aus arr[y][x] arr2[y][x] wird
-  function transposeArray (originalArray) {
+  function transposeArray(originalArray) {
     return originalArray[0].map((_, colIndex) => originalArray.map((row) => row[colIndex]))
   }
 
   // Berechnet die Julia Menge und gibt eine Reihe von Pixeln mit dem Farbwert zurück. Farbwert ist meistens 0 oder 255
-  function getJuliaRow (width, height, previousRow) {
+  function getJuliaRow(width, height, previousRow) {
     const newRow = Array(width).fill({
       r: 0,
       g: 0,
@@ -517,7 +623,7 @@ function flameEffect () {
   }
 
   // Erstellt zusätzliche Reihen und fügt sie dem Array hinzu. Verwendet die Julia Menge dazu
-  function getBottomRows (array) {
+  function getBottomRows(array) {
     const width = array.length
     const transposed = transposeArray(array)
     let transposedHeight = transposed.length
@@ -532,7 +638,7 @@ function flameEffect () {
   }
 
   // Setzt die Farbwerte für ein 2D Array neu, indem es alle Farben eines Punktes auf den Durchschnitt seiner Nachbarn setzt
-  function smoothe2D (array) {
+  function smoothe2D(array) {
     buffer = array
     const width = array.length
     const height = array[0].length
@@ -575,7 +681,7 @@ function flameEffect () {
   }
 
   // Zieht von jedem Punkt den Durchschnitt der Nachbarn und zusätzlich den Wert aus der CoolingMap ab
-  function cool (array, coolingMap) {
+  function cool(array, coolingMap) {
     buffer = array
     const width = array.length
     const height = array[0].length
@@ -622,7 +728,7 @@ function flameEffect () {
   }
 
   // Zeichnet alle Punkte eines 2D Arrays
-  function draw2dArray (array) {
+  function draw2dArray(array) {
     for (let x = 0; x < array.length; x++) {
       for (let y = 0; y < array[x].length; y++) {
         const pixel = array[x][y]
@@ -633,18 +739,22 @@ function flameEffect () {
   }
 
   // aktualisiert die Werte und zeichnet das Array neu
-  function render () {
-    smoothe2D(feuer)
-    feuer = cool(feuer, coolingMap)
-    ctxFlame.clearRect(0, 0, width, height)
-    if (renderFlame) draw2dArray(feuer)
-    if (showCoolingMap) coolingMap.drawImage()
+  function render() {
+    if (renderFlame) {
+      smoothe2D(feuer)
+      feuer = cool(feuer, coolingMap)
+      ctxFlame.clearRect(0, 0, width, height)
+      draw2dArray(feuer)
+      if (showCoolingMap) coolingMap.drawImage()
+    }
     requestAnimationFrame(render)
   }
 
-  function main () {
-    setup()
-    render()
+  function main() {
+    if (renderFlame) {
+      setup()
+      render()
+    }
   }
 
   main()
