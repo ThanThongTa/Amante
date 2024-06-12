@@ -21,7 +21,7 @@ let renderJuliaSet = false
 let showCoolingMap = false
 
 const preCalcs = []
-function createGradientsTable () {
+function createGradientsTable() {
   for (let i = 0; i < 256; i++) {
     preCalcs[i] = []
     for (let j = 0; j < 256; j++) {
@@ -42,26 +42,26 @@ function createGradientsTable () {
 
 createGradientsTable()
 
-function noise1D (x) {
-  return perlinNoise(21, x, 21, preCalcs)
+function noise1D(x) {
+  return perlinNoise(x, 21, 21, preCalcs)
 }
 
-function noise2D (x, y) {
+function noise2D(x, y) {
   return perlinNoise(x, y, 21, preCalcs)
 }
 
-function noise3D (x, y, z) {
+function noise3D(x, y, z) {
   return perlinNoise(x, y, z, preCalcs)
 }
 
-function perlinNoise (x, y, z, grads) {
+function perlinNoise(x, y, z, grads) {
   const persistence = 0.5
   const octaves = 4
-  const startAmplitude = 1.0
-  const startFrequency = 1.0
+  const startAmplitude = 2.0
+  const startFrequency = 1 / 2.0
   const gradients = grads
 
-  function perlinNoise3D (x, y, z) {
+  function perlinNoise3D(x, y, z, frequency, amplitude) {
     // Grid cell coordinates
     const gridX = Math.floor(x)
     const gridY = Math.floor(y)
@@ -72,132 +72,243 @@ function perlinNoise (x, y, z, grads) {
     const fy = y - gridY
     const fz = z - gridZ
 
-    // Fade function for smooth interpolation
-    const fade = (t) => t * t * (3 - 2 * t)
+    const smooth = (t) => Math.sin(t * 2 * Math.PI) * (frequency * amplitude * 3);
 
-    // Gradient lookups (replace with hashing logic for your gradient table)
-    const gradientsAtCorners = [
-      gradients[gridX % gradients.length][gridY % gradients.length][gridZ % gradients.length],
-      gradients[(gridX + 1) % gradients.length][gridY % gradients.length][gridZ % gradients.length],
-      gradients[gridX % gradients.length][(gridY + 1) % gradients.length][gridZ % gradients.length],
-      gradients[(gridX + 1) % gradients.length][(gridY + 1) % gradients.length][gridZ % gradients.length],
-      gradients[gridX % gradients.length][gridY % gradients.length][(gridZ + 1) % gradients.length],
-      gradients[(gridX + 1) % gradients.length][gridY % gradients.length][(gridZ + 1) % gradients.length],
-      gradients[gridX % gradients.length][(gridY + 1) % gradients.length][(gridZ + 1) % gradients.length],
-      gradients[(gridX + 1) % gradients.length][(gridY + 1) % gradients.length][(gridZ + 1) % gradients.length]
-    ]
+    const gx0 = gridX % gradients.length
+    const gy0 = gridY % gradients.length
+    const gz0 = gridZ % gradients.length
 
-    function dot (gradient, vector) {
-      return gradient.x * vector[0] + gradient.y * vector[1] + gradient.z * vector[2]
-    }
-
-    // Dot products with gradients
-    const dotProducts = []
-    for (let i = 0; i < gradientsAtCorners.length; i++) {
-      const gradient = gradientsAtCorners[i]
-      const direction = [fx, fy, fz].map((val, index) => val - (index === 0 ? gridX : (index === 1 ? gridY : gridZ)))
-      dotProducts.push(dot(gradient, direction))
-    }
-
-    // Trilinear interpolation (basic implementation)
-    const ix1 = fade(fx)
-    const iy1 = fade(fy)
-    const iz1 = fade(fz)
-
-    const ix2 = 1.0 - ix1
-    const iy2 = 1.0 - iy1
-    const iz2 = 1.0 - iz1
-
-    const d000 = dotProducts[0]
-    const d001 = dotProducts[1]
-    const d010 = dotProducts[2]
-    const d011 = dotProducts[3]
-    const d100 = dotProducts[4]
-    const d101 = dotProducts[5]
-    const d110 = dotProducts[6]
-    const d111 = dotProducts[7]
-
-    // Perlin noise interpolation
-    const x1 = ix2 * d000 + ix1 * d010
-    const x2 = ix2 * d001 + ix1 * d011
-    const y1 = iy2 * x1 + iy1 * x2
-    const y2 = iy2 * d100 + iy1 * d110
-    const y3 = iy2 * d101 + iy1 * d111
-
-    const noise = iz2 * y1 + iz1 * (y2 + y3) / 2.0
+    const g = gradients[gx0][gy0][gz0]
+    const noise = smooth(fx) * g.x + smooth(fy) * g.y + smooth(fz) * g.z
 
     return noise
   }
 
   // Function for Perlin noise with octaves
-  function perlinNoise3DOctaves (x, y, z) {
+  function perlinNoise3DOctaves(x, y, z) {
     let totalNoise = 0.0
     let frequency = startFrequency
     let amplitude = startAmplitude
 
     for (let i = 0; i < octaves; i++) {
-      const octaveNoise = perlinNoise3D(x * frequency, y * frequency, z * frequency)
+      const octaveNoise = perlinNoise3D(x * frequency, y * frequency, z * frequency, frequency, amplitude)
       totalNoise += octaveNoise * amplitude
-      frequency *= 2.0
+      frequency /= persistence
       amplitude *= persistence
     }
 
-    return totalNoise / 16
+    return totalNoise
   }
 
-  return perlinNoise3DOctaves(x, y, z, octaves)
+  return perlinNoise3DOctaves(x, y, z)
 }
 
-function perlinNoiseEffect () {
-  function toggleRenderNoise () {
+function perlinNoiseEffect() {
+  function toggleRenderNoise() {
     renderNoise = !renderNoise
-  }
-
-  function setup () {
-    canvasNoise.width = 400
-    canvasNoise.height = 400
-
-    document.querySelector('#renderNoise').addEventListener('click', toggleRenderNoise)
   }
 
   let xStart = 0
 
-  function render () {
+  function drawLine() {
     ctxNoise.clearRect(0, 0, canvasNoise.width, canvasNoise.height)
-    // const x = Math.abs(noise1D(xoffset)) * canvasNoise.width
-    // ctxNoise.beginPath()
-    // ctxNoise.fillStyle = 'white'
-    // ctxNoise.arc(x, 200, 24, 0, 2 * Math.PI)
-    // ctxNoise.fill()
-    // xoffset += 0.01
     let xoffset = xStart
     const inc = 0.01
     ctxNoise.strokeStyle = 'white'
-
-    console.log(noise1D(xoffset))
-
-    // ctxNoise.beginPath()
-    // // let xoffset = 0
-    // // let yoffset = 0
-    // for (let x = 0; x < canvasNoise.width; x++) {
-    //   // xoffset = 0
-    //   // for (let y = 0; y < canvasNoise.height; y++) {
-    //   //   const r = noise2D(xoffset, yoffset) * 255
-    //   //   ctxNoise.fillStyle = `rgba(${r}, ${r}, ${r}, 100)`
-    //   //   ctxNoise.fillRect(x * pixelsize, y * pixelsize, pixelsize, pixelsize)
-    //   //   xoffset += inc
-    //   // }
-    //   // yoffset += inc
-    //   ctxNoise.lineTo(x, noise1D(xoffset) * canvasNoise.height)
-    //   ctxNoise.stroke()
-    //   // console.log(x, noise1D(xoffset))
-    //   // xoffset += inc
-    // }
-    // xStart += inc
-    // requestAnimationFrame(render)
+    ctxNoise.beginPath()
+    for (let x = 0; x < canvasNoise.width; x++) {
+      noiseVal = (noise1D(xoffset) + 10) / 20
+      ctxNoise.lineTo(x, noiseVal * canvasNoise.height)
+      ctxNoise.stroke()
+      xoffset += inc
+    }
+    xStart += inc
   }
 
-  function main () {
+  const pixelsize = 1
+  function drawMap() {
+    const inc = 0.01
+    let xoffset = xStart
+    let yoffset = xStart
+    let min = 0
+    let max = 0
+    ctxNoise.clearRect(0, 0, canvasNoise.width, canvasNoise.height)
+    for (let y = 0; y < canvasNoise.height; y += pixelsize) {
+      xoffset = xStart
+      for (let x = 0; x < canvasNoise.width; x += pixelsize) {
+        const bright = Math.abs(noise2D(xoffset, yoffset) / 16) * 255
+        if (bright < min) min = bright
+        if (bright > max) max = bright
+        ctxNoise.fillStyle = `rgba(${bright}, ${bright}, ${bright}, 255)`
+        ctxNoise.fillRect(x, y, pixelsize, pixelsize)
+        xoffset += inc
+      }
+      yoffset += inc
+    }
+    console.log(min, max)
+  }
+
+  const protoVector = {
+    x: 0,
+    y: 0,
+    angle: 0,
+    fromAngle: function (angle) {
+      const vec = Object.create(protoVector)
+      vec.x = Math.cos(angle)
+      vec.y = Math.sin(angle)
+      vec.angle = angle
+      return vec
+    },
+    createVector: function (x, y) {
+      const vec = Object.create(protoVector)
+      vec.x = x
+      vec.y = y
+      return vec
+    }
+  }
+
+  const protoParticle = {
+    position: protoVector.createVector(0, 0),
+    velocity: protoVector.createVector(0, 0),
+    acceleration: protoVector.createVector(0, 0),
+    maxSpeed: 2,
+    update: function () {
+      this.velocity.x += this.acceleration.x
+      this.velocity.y += this.acceleration.y
+      if (this.velocity.x > this.maxSpeed) {
+        this.velocity.x = this.maxSpeed
+      }
+      if (this.velocity.x < -this.maxSpeed) {
+        this.velocity.x = -this.maxSpeed
+      }
+      if (this.velocity.y > this.maxSpeed) {
+        this.velocity.y = this.maxSpeed
+      }
+      if (this.velocity.y < -this.maxSpeed) {
+        this.velocity.y = -this.maxSpeed
+      }
+      this.position.x += this.velocity.x
+      this.position.y += this.velocity.y
+      this.acceleration.x = 0
+      this.acceleration.y = 0
+    },
+    applyForce: function (force) {
+      this.acceleration.x += force.x
+      this.acceleration.y += force.y
+    },
+    draw: function () {
+      ctxNoise.fillStyle = 'red'
+      ctxNoise.beginPath()
+      ctxNoise.arc(this.position.x, this.position.y, 4, 0, 2 * Math.PI)
+      ctxNoise.fill()
+    },
+    edges: function () {
+      if (this.position.x > canvasNoise.width) {
+        this.position.x = 0
+      }
+      if (this.position.x < 0) {
+        this.position.x = canvasNoise.width
+      }
+      if (this.position.y > canvasNoise.height) {
+        this.position.y = 0
+      }
+      if (this.position.y < 0) {
+        this.position.y = canvasNoise.height
+      }
+    },
+    follow: function (vectors) {
+      const x = Math.floor(this.position.x / scale)
+      const y = Math.floor(this.position.y / scale)
+      if (!vectors[y]) return
+      if (!vectors[y][x]) return
+      let force = vectors[y][x]
+      if (!force) {
+        force = protoVector.createVector(0, 0)
+      }
+      this.applyForce(force)
+    },
+    createParticle: function () {
+      const particle = Object.create(protoParticle)
+      particle.position = protoVector.createVector(
+        Math.random() * canvasNoise.width,
+        Math.random() * canvasNoise.height)
+      particle.velocity = protoVector.createVector(
+        Math.random() - 0.5,
+        Math.random() - 0.5)
+      particle.acceleration = protoVector.createVector(0, 0)
+      particle.maxSpeed = 2
+      return particle
+    }
+  }
+
+  function drawVector(x, y, xoffset, yoffset, zoffset) {
+    const ang = Math.abs(noise3D(xoffset, yoffset, zoffset) / 16) * Math.PI * 4
+    const vec = protoVector.fromAngle(ang)
+    // ctxNoise.strokeStyle = 'rgba(0, 0, 0, 0.2)'
+    // ctxNoise.save()
+    // ctxNoise.translate(x * scale, y * scale)
+    // ctxNoise.rotate(vec.angle)
+    // ctxNoise.beginPath()
+    // ctxNoise.moveTo(0, 0)
+    // ctxNoise.lineTo(scale, 0)
+    // ctxNoise.stroke()
+    // ctxNoise.restore()
+    return vec
+  }
+
+  const scale = 20
+  let cols, rows
+  let zoffset = xStart
+  function drawVectors() {
+    const inc = 0.1
+    let xoffset = xStart
+    let yoffset = xStart
+    cols = Math.floor(canvasNoise.width / scale)
+    rows = Math.floor(canvasNoise.height / scale)
+    ctxNoise.clearRect(0, 0, canvasNoise.width, canvasNoise.height)
+    // ctxNoise.fillStyle = 'rgb(200, 200, 200)'
+    // ctxNoise.fillRect(0, 0, canvasNoise.width, canvasNoise.height)
+    for (let y = 0; y < cols; y++) {
+      xoffset = xStart
+      flowfield[y] = []
+      for (let x = 0; x < rows; x++) {
+        const v = drawVector(x, y, xoffset, yoffset, zoffset)
+        flowfield[y].push(v)
+        xoffset += inc
+      }
+      yoffset += inc
+      zoffset += 0.00005
+    }
+    for (const particle of particles) {
+      particle.follow(flowfield)
+      particle.update()
+      particle.edges()
+      particle.draw()
+    }
+  }
+
+  const particles = []
+  const flowfield = []
+
+  function setup() {
+    canvasNoise.width = 400
+    canvasNoise.height = 400
+
+    for (let i = 0; i < 1000; i++) {
+      particles.push(protoParticle.createParticle())
+    }
+
+    document.querySelector('#renderNoise').addEventListener('click', toggleRenderNoise)
+  }
+
+  function render() {
+    // drawLine()
+    // drawMap()
+    drawVectors()
+    requestAnimationFrame(render)
+  }
+
+  function main() {
     setup()
     if (renderNoise) {
       render()
@@ -207,20 +318,20 @@ function perlinNoiseEffect () {
   main()
 }
 
-function flowfieldEffect () {
+function flowfieldEffect() {
   const heart = []
   let a = 0
 
-  function setup () {
+  function setup() {
     ctxHeart.translate(canvasHeart.width / 2, canvasHeart.height / 2)
     document.querySelector('#renderHeart').addEventListener('click', toggleRenderHeart)
   }
 
-  function toggleRenderHeart () {
+  function toggleRenderHeart() {
     renderHeart = !renderHeart
   }
 
-  function drawHeart () {
+  function drawHeart() {
     ctxHeart.strokeStyle = 'white'
     ctxHeart.fillStyle = 'hsl(0 100 50)' // rgb(200, 100, 50)'
     ctxHeart.beginPath()
@@ -237,7 +348,7 @@ function flowfieldEffect () {
     a += 0.01
   }
 
-  function render () {
+  function render() {
     if (renderHeart) {
       drawHeart()
     } else {
@@ -246,7 +357,7 @@ function flowfieldEffect () {
     requestAnimationFrame(render)
   }
 
-  function main () {
+  function main() {
     if (renderHeart) {
       setup()
       render()
@@ -256,7 +367,7 @@ function flowfieldEffect () {
   main()
 }
 
-function fluidEffect () {
+function fluidEffect() {
   const N = 64
   const iter = 16
   const SCALE = 6
@@ -264,7 +375,7 @@ function fluidEffect () {
   let fluid
 
   class Fluid {
-    constructor (dt, diffusion, viscosity) {
+    constructor(dt, diffusion, viscosity) {
       this.size = N
       this.dt = dt
       this.diff = diffusion
@@ -281,7 +392,7 @@ function fluidEffect () {
     }
 
     // step method
-    step () {
+    step() {
       const visc = this.visc
       const diff = this.diff
       const dt = this.dt
@@ -307,20 +418,20 @@ function fluidEffect () {
     }
 
     // method to add density
-    addDensity (x, y, amount) {
+    addDensity(x, y, amount) {
       const index = ix(x, y)
       this.density[index] += amount // Math.min(Math.max(this.density[index] + amount, 0), 255)
     }
 
     // method to add velocity
-    addVelocity (x, y, amountX, amountY) {
+    addVelocity(x, y, amountX, amountY) {
       const index = ix(x, y)
       this.Vx[index] += amountX
       this.Vy[index] += amountY
     }
 
     // function to render density
-    renderD () {
+    renderD() {
       for (let i = 0; i < N; i++) {
         for (let j = 0; j < N; j++) {
           const x = i * SCALE
@@ -334,14 +445,14 @@ function fluidEffect () {
     }
   }
 
-  function ix (x, y) {
+  function ix(x, y) {
     if (x < 0 || x >= N - 1 || y < 0 || y >= N - 1) {
       return 0
     }
     return (x + y * N)
   }
 
-  function setBnd (b, x) {
+  function setBnd(b, x) {
     for (let i = 1; i < N - 1; i++) {
       x[ix(i, 0)] = b === 2 ? -x[ix(i, 1)] : x[ix(i, 1)]
       x[ix(i, N - 1)] = b === 2 ? -x[ix(i, N - 2)] : x[ix(i, N - 2)]
@@ -358,7 +469,7 @@ function fluidEffect () {
     x[ix(N - 1, N - 1)] = 0.5 * (x[ix(N - 2, N - 1)] + x[ix(N - 1, N - 2)])
   }
 
-  function linSolve (b, x, x0, a, c) {
+  function linSolve(b, x, x0, a, c) {
     const cRecip = 1.0 / c
     for (let k = 0; k < iter; k++) {
       for (let j = 1; j < N - 1; j++) {
@@ -377,12 +488,12 @@ function fluidEffect () {
     }
   }
 
-  function diffuse (b, x, prevX, diff, dt) {
+  function diffuse(b, x, prevX, diff, dt) {
     const a = dt * diff * (N - 2) * (N - 2)
     linSolve(b, x, prevX, a, 1 + 6 * a)
   }
 
-  function project (velocX, velocY, p, div) {
+  function project(velocX, velocY, p, div) {
     for (let j = 1; j < N - 1; j++) {
       for (let i = 1; i < N - 1; i++) {
         div[ix(i, j)] = (-0.5 * (
@@ -409,7 +520,7 @@ function fluidEffect () {
     setBnd(2, velocY)
   }
 
-  function advect (b, d, d0, velocX, velocY, dt) {
+  function advect(b, d, d0, velocX, velocY, dt) {
     let i0, i1, j0, j1
 
     const dtx = dt * (N - 2)
@@ -458,16 +569,16 @@ function fluidEffect () {
     setBnd(b, d)
   }
 
-  function setup () {
+  function setup() {
     fluid = new Fluid(0.1, 0.01, 0.000000001)
     document.querySelector('#renderFluid').addEventListener('click', toggleRenderFluid)
   }
 
-  function toggleRenderFluid () {
+  function toggleRenderFluid() {
     renderFluid = !renderFluid
   }
 
-  function render () {
+  function render() {
     if (renderFluid) {
       const cx = Math.floor(0.5 * canvasFluid.width / SCALE)
       const cy = Math.floor(0.2 * canvasFluid.height / SCALE)
@@ -483,7 +594,7 @@ function fluidEffect () {
     requestAnimationFrame(render)
   }
 
-  function main () {
+  function main() {
     if (renderFluid) {
       setup()
       render()
@@ -494,7 +605,7 @@ function fluidEffect () {
 }
 
 // Flame Effect als umfassende Funktion, um alles zusammen zu halten
-function flameEffect () {
+function flameEffect() {
   canvasFlame.height = 600
   canvasFlame.width = 400 // bei mehr als 400 macht die Julia Menge Probleme
   const width = canvasFlame.width
@@ -573,7 +684,7 @@ function flameEffect () {
   }
 
   // erstellt ein 2D Array gefüllt mit weissen Pixeln
-  function create2DArray (width, height) {
+  function create2DArray(width, height) {
     const array = [
       ...Array(Math.floor(width / pixelsize))
     ].fill().map(() =>
@@ -583,7 +694,7 @@ function flameEffect () {
   }
 
   // Erstellt die Anfangsbedingungen
-  function setup () {
+  function setup() {
     feuer = create2DArray(width, height)
     buffer = create2DArray(width, height)
     coolingMap = protoImage.createImage(0, 0, width, height)
@@ -593,16 +704,16 @@ function flameEffect () {
     createCoolingMap()
   }
 
-  function toggleRenderFlame () {
+  function toggleRenderFlame() {
     renderFlame = !renderFlame
   }
 
-  function toggleShowCoolingMap () {
+  function toggleShowCoolingMap() {
     showCoolingMap = !showCoolingMap
   }
 
   // Erstellt zufällig graue Kreise auf der Zeichenfläche
-  function randomNoise () {
+  function randomNoise() {
     for (let i = 0; i < coolingCircles; i++) {
       const rndmBrightness = Math.floor(Math.random() * 255)
       const randomX = Math.floor(Math.random() * (width - 20)) + 10
@@ -620,7 +731,7 @@ function flameEffect () {
   }
 
   // Erstellt eine Cooling Map für das Abkühlen der Flammen
-  function createCoolingMap () {
+  function createCoolingMap() {
     coolingMap = randomNoise()
     for (let i = 0; i < coolingSmoothings; i++) {
       smoothe(coolingMap)
@@ -628,7 +739,7 @@ function flameEffect () {
   }
 
   // Macht ein Bild unscharf, indem es alle Farben eines Punktes auf den Durchschnitt seiner Nachbarn setzt
-  function smoothe (image) {
+  function smoothe(image) {
     buffer2 = image
     buffer2.loadPixels()
     for (let x = 0; x < image.width; x++) {
@@ -662,12 +773,12 @@ function flameEffect () {
   }
 
   // Transponiert ein 2D Array, so dass aus arr[y][x] arr2[y][x] wird
-  function transposeArray (originalArray) {
+  function transposeArray(originalArray) {
     return originalArray[0].map((_, colIndex) => originalArray.map((row) => row[colIndex]))
   }
 
   // Berechnet die Julia Menge und gibt eine Reihe von Pixeln mit dem Farbwert zurück. Farbwert ist meistens 0 oder 255
-  function getJuliaRow (width, height, previousRow) {
+  function getJuliaRow(width, height, previousRow) {
     const newRow = Array(width).fill({
       r: 0,
       g: 0,
@@ -717,7 +828,7 @@ function flameEffect () {
   }
 
   // Erstellt zusätzliche Reihen und fügt sie dem Array hinzu. Verwendet die Julia Menge dazu
-  function getBottomRows (array) {
+  function getBottomRows(array) {
     const width = array.length
     const transposed = transposeArray(array)
     let transposedHeight = transposed.length
@@ -732,7 +843,7 @@ function flameEffect () {
   }
 
   // Setzt die Farbwerte für ein 2D Array neu, indem es alle Farben eines Punktes auf den Durchschnitt seiner Nachbarn setzt
-  function smoothe2D (array) {
+  function smoothe2D(array) {
     buffer = array
     const width = array.length
     const height = array[0].length
@@ -775,7 +886,7 @@ function flameEffect () {
   }
 
   // Zieht von jedem Punkt den Durchschnitt der Nachbarn und zusätzlich den Wert aus der CoolingMap ab
-  function cool (array, coolingMap) {
+  function cool(array, coolingMap) {
     buffer = array
     const width = array.length
     const height = array[0].length
@@ -822,7 +933,7 @@ function flameEffect () {
   }
 
   // Zeichnet alle Punkte eines 2D Arrays
-  function draw2dArray (array) {
+  function draw2dArray(array) {
     for (let x = 0; x < array.length; x++) {
       for (let y = 0; y < array[x].length; y++) {
         const pixel = array[x][y]
@@ -833,7 +944,7 @@ function flameEffect () {
   }
 
   // aktualisiert die Werte und zeichnet das Array neu
-  function render () {
+  function render() {
     if (renderFlame) {
       smoothe2D(feuer)
       feuer = cool(feuer, coolingMap)
@@ -844,7 +955,7 @@ function flameEffect () {
     requestAnimationFrame(render)
   }
 
-  function main () {
+  function main() {
     if (renderFlame) {
       setup()
       render()
@@ -854,20 +965,20 @@ function flameEffect () {
   main()
 }
 
-function MandelbrotEffect () {
+function MandelbrotEffect() {
   const pixelsize = 2
 
-  function toggleRenderMandelbrot () {
+  function toggleRenderMandelbrot() {
     renderMandelbrot = !renderMandelbrot
   }
 
-  function setup () {
+  function setup() {
     canvasMandelbrot.width = 500
     canvasMandelbrot.height = 500
     document.querySelector('#renderMandelbrot').addEventListener('click', toggleRenderMandelbrot)
   }
 
-  function render () {
+  function render() {
     const maxIterations = 100
     const range = 3
 
@@ -905,7 +1016,7 @@ function MandelbrotEffect () {
     }
   }
 
-  function main () {
+  function main() {
     setup()
     if (renderMandelbrot) {
       render()
@@ -915,14 +1026,14 @@ function MandelbrotEffect () {
   main()
 }
 
-function JuliaSetEffect () {
+function JuliaSetEffect() {
   const pixelsize = 2
 
-  function toggleRenderJuliaSet () {
+  function toggleRenderJuliaSet() {
     renderJuliaSet = !renderJuliaSet
   }
 
-  function setup () {
+  function setup() {
     canvasJuliaSet.width = 500
     canvasJuliaSet.height = 500
     document.querySelector('#renderJulia').addEventListener('click', toggleRenderJuliaSet)
@@ -930,7 +1041,7 @@ function JuliaSetEffect () {
 
   // let angle = 0
 
-  function render () {
+  function render() {
     const maxIterations = 100
     const range = 6
     const ca = -0.70176
@@ -968,7 +1079,7 @@ function JuliaSetEffect () {
     requestAnimationFrame(render)
   }
 
-  function main () {
+  function main() {
     setup()
     if (renderJuliaSet) render()
   }
